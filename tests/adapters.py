@@ -8,7 +8,8 @@ import numpy.typing as npt
 import torch
 from jaxtyping import Bool, Float, Int
 from torch import Tensor
-
+from cs336_basics.train_bpe import initialize_vocab_and_merges, initialize_word_and_pair_stats, pretokenizer, apply_merge, get_most_frequent_pair
+from cs336_basics.tokenizer import Tokenizer
 
 def run_linear(
     d_in: int,
@@ -559,7 +560,7 @@ def get_tokenizer(
     Returns:
         A BPE tokenizer that uses the provided vocab, merges, and special tokens.
     """
-    raise NotImplementedError
+    return Tokenizer(vocab, merges, special_tokens)
 
 
 def run_train_bpe(
@@ -589,4 +590,17 @@ def run_train_bpe(
                 representing that <token1> was merged with <token2>.
                 Merges are ordered by order of creation.
     """
-    raise NotImplementedError
+    vocab, merges, remaining_merges = initialize_vocab_and_merges(special_tokens, vocab_size)
+    total_freq = pretokenizer(input_path, special_tokens)
+    words, words_freq, pair_freq, pair_occurrences = initialize_word_and_pair_stats(total_freq)
+    while remaining_merges > 0 and pair_freq:
+        highest_pair = get_most_frequent_pair(pair_freq)
+        words, words_freq, pair_occurrences, pair_freq  = apply_merge(
+            highest_pair, words, words_freq, pair_occurrences, pair_freq
+        )
+        merges.append(highest_pair)
+        vocab[len(vocab)] = highest_pair[0] + highest_pair[1]
+        remaining_merges -= 1
+    return vocab, merges
+
+
