@@ -9,6 +9,7 @@ import torch
 from jaxtyping import Bool, Float, Int
 from torch import Tensor
 from torch.nn import RMSNorm
+from cs336_basics.cross_entropy import cross_entropy_loss
 from cs336_basics.embedding import Embedding
 from cs336_basics.multihead_self_attention import MultiheadSelfAttention
 from cs336_basics.rope import RotaryPositionalEmbedding
@@ -16,10 +17,13 @@ from cs336_basics.scaled_dot_product_attention import scaled_dot_product_attenti
 from cs336_basics.train_bpe import initialize_vocab_and_merges, initialize_word_and_pair_stats, pretokenizer, apply_merge, get_most_frequent_pair
 from cs336_basics.tokenizer import Tokenizer
 from cs336_basics.linear import Linear
+from cs336_basics.lr_cosine_schedule import get_lr_cosine_schedule
 from cs336_basics.swiglu import SwiGLU
 from cs336_basics.softmax import softmax
 from cs336_basics.transformer import Transformer
 from cs336_basics.transformer_lm import TransformerLM
+from cs336_basics.adamw_optimizer import AdamWOptimizer
+from cs336_basics.gradient_clipping import gradient_clipping
 
 def run_linear(
     d_in: int,
@@ -531,8 +535,7 @@ def run_cross_entropy(
     Returns:
         Float[Tensor, ""]: The average cross-entropy loss across examples.
     """
-    raise NotImplementedError
-
+    return cross_entropy_loss(inputs, targets)
 
 def run_gradient_clipping(parameters: Iterable[torch.nn.Parameter], max_l2_norm: float) -> None:
     """Given a set of parameters, clip their combined gradients to have l2 norm at most max_l2_norm.
@@ -543,14 +546,14 @@ def run_gradient_clipping(parameters: Iterable[torch.nn.Parameter], max_l2_norm:
 
     The gradients of the parameters (parameter.grad) should be modified in-place.
     """
-    raise NotImplementedError
+    return gradient_clipping(parameters, max_l2_norm)
 
 
 def get_adamw_cls() -> Any:
     """
     Returns a torch.optim.Optimizer that implements AdamW.
     """
-    raise NotImplementedError
+    return AdamWOptimizer
 
 
 def run_get_lr_cosine_schedule(
@@ -578,9 +581,8 @@ def run_get_lr_cosine_schedule(
     Returns:
         Learning rate at the given iteration under the specified schedule.
     """
-    raise NotImplementedError
-
-
+    return get_lr_cosine_schedule(it, max_learning_rate, min_learning_rate, warmup_iters, cosine_cycle_iters)
+        
 def run_save_checkpoint(
     model: torch.nn.Module,
     optimizer: torch.optim.Optimizer,
