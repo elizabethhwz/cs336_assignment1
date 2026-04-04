@@ -2,7 +2,6 @@ from cs336_basics.transformer import Transformer
 from cs336_basics.embedding import Embedding
 from cs336_basics.rmsnorm import RMSNorm
 from cs336_basics.linear import Linear
-from cs336_basics.softmax import softmax
 from jaxtyping import Float, Int
 from torch import Tensor, nn
 

@@ -9,3 +9,13 @@ def softmax(x: torch.Tensor, dim: int = -1) -> torch.Tensor:
     x_exp = torch.exp(x - x_max)
     x_sum = torch.sum(x_exp, dim=dim, keepdim=True)
     return torch.where(x_sum > 0, x_exp / x_sum, torch.zeros_like(x_exp))
+
+
+def softmax_temperature(x: torch.Tensor, temperature: float, dim: int = -1) -> torch.Tensor:
+    """
+    Compute the softmax of the input tensor along the specified dimension with temperature scaling.
+    """
+    if temperature <= 0:
+        raise ValueError("Temperature must be greater than 0.")
+    x_scaled = x / temperature
+    return softmax(x_scaled, dim=dim)
