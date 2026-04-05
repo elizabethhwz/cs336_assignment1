@@ -5,6 +5,7 @@ from typing import Any
 
 import numpy as np
 import torch
+from tqdm.auto import tqdm
 
 from cs336_basics.adamw_optimizer import AdamWOptimizer
 from cs336_basics.checkpoint import load_checkpoint, save_checkpoint
@@ -55,7 +56,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--config",
         type=Path,
-        default=Path("train_llm_config.json"),
+        default=Path("experiments/train_llm_config.json"),
         help="Path to a JSON config file.",
     )
     parser.add_argument("--resume-from", type=Path, default=None, help="Optional checkpoint to resume from.")
@@ -237,6 +238,11 @@ def run_training(args: argparse.Namespace) -> None:
         rope_theta=args.rope_theta,
     ).to(device)
 
+    if device == "cpu":
+        model = torch.compile(model)
+    elif device == "mps":
+        model = torch.compile(model, backend="aot_eager")
+
     optimizer = AdamWOptimizer(
         model.parameters(),
         lr=args.lr_max,
@@ -255,9 +261,24 @@ def run_training(args: argparse.Namespace) -> None:
     wandb_run = maybe_init_wandb(args, config)
 
     print(json.dumps(config, indent=2))
+    print(
+        f"\nTraining on {device} | "
+        f"train_tokens={len(train_data):,} | val_tokens={len(val_data):,} | "
+        f"batch_size={args.batch_size} | context_length={args.context_length}\n"
+    )
 
     model.train()
-    for iteration in range(start_iter, args.max_iters):
+    progress_bar = tqdm(
+        range(start_iter, args.max_iters),
+        desc="Training",
+        dynamic_ncols=True,
+        unit="iter",
+        bar_format="{l_bar}{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}] {postfix}",
+    )
+    latest_train_loss = float("nan")
+    latest_val_loss = float("nan")
+
+    for iteration in progress_bar:
         lr = get_lr_cosine_schedule(
             t=iteration,
             lr_max=args.lr_max,
@@ -275,19 +296,28 @@ def run_training(args: argparse.Namespace) -> None:
         )
         logits = model(x)
         loss = cross_entropy_loss(logits, y)
+        latest_train_loss = loss.item()
 
         optimizer.zero_grad(set_to_none=True)
         loss.backward()
         gradient_clipping(model.parameters(), max_norm=args.grad_clip)
         optimizer.step()
 
+        progress_bar.set_postfix_str(
+            f"train_loss={latest_train_loss:.4f}  "
+            f"val_loss={latest_val_loss:.4f}  "
+            f"lr={lr:.2e}"
+        )
+
         if iteration % args.log_every == 0:
-            train_loss = loss.item()
-            print(f"iter={iteration} train_loss={train_loss:.4f} lr={lr:.6g}")
+            tqdm.write(
+                f"[train] iter={iteration:>6} | train_loss={latest_train_loss:.4f} | lr={lr:.6g}"
+            )
             if wandb_run is not None:
-                wandb_run.log({"iter": iteration, "train/loss": train_loss, "lr": lr})
+                wandb_run.log({"iter": iteration, "train/loss": latest_train_loss, "lr": lr})
 
         if iteration % args.eval_every == 0 or iteration == args.max_iters - 1:
+            progress_bar.set_description("Evaluating")
             val_loss = evaluate(
                 model,
                 dataset=val_data,
@@ -296,12 +326,24 @@ def run_training(args: argparse.Namespace) -> None:
                 device=device,
                 eval_steps=args.eval_steps,
             )
-            print(f"iter={iteration} val_loss={val_loss:.4f}")
+            latest_val_loss = val_loss
+            progress_bar.set_description("Training")
+            progress_bar.set_postfix_str(
+                f"train_loss={latest_train_loss:.4f}  "
+                f"val_loss={latest_val_loss:.4f}  "
+                f"lr={lr:.2e}"
+            )
+            tqdm.write(f"[valid] iter={iteration:>6} | val_loss={val_loss:.4f}")
             if wandb_run is not None:
                 wandb_run.log({"iter": iteration, "val/loss": val_loss})
 
         if ((iteration + 1) % args.save_every == 0) or (iteration == args.max_iters - 1):
             save_checkpoint(model, optimizer, iteration + 1, args.checkpoint_path)
+            tqdm.write(
+                f"[save ] iter={iteration + 1:>6} | checkpoint={args.checkpoint_path}"
+            )
+
+    progress_bar.close()
 
     if wandb_run is not None:
         wandb_run.finish()

@@ -1,5 +1,6 @@
-from cs336_basics.top_p_sampling import top_p_sampling
 import torch
+
+from cs336_basics.top_p_sampling import top_p_sampling
 
 
 @torch.no_grad()
@@ -28,15 +29,17 @@ def decoder(
         A tensor of shape (1, prompt_length + generated_length) containing the prompt
         tokens followed by the generated completion.
     """
-    tokens = torch.tensor(prompt, dtype=torch.long, device=model.device).unsqueeze(0)
+    device = next(model.parameters()).device
+    tokens = torch.tensor(prompt, dtype=torch.long, device=device).unsqueeze(0)
     for _ in range(max_tokens):
         input_tokens = tokens[:, -context_length:]
         logits = model(input_tokens)
         next_logits = logits[..., -1, :]
         next_token = top_p_sampling(next_logits, p=p, temperature=temperature)
-        
+
         tokens = torch.cat([tokens, next_token.unsqueeze(-1)], dim=-1)
 
         if (next_token == eos_token_id).all():
             break
+
     return tokens
