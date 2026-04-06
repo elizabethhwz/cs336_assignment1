@@ -166,3 +166,5 @@ data/
 trained_data/
 wandb/
 experiments/checkpoints/
+experiments/lr_sweep_results/
+experiments/batch_size_sweep_results/
